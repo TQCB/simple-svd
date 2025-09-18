@@ -29,7 +29,7 @@ class PCA:
         self.approx_X = self.U_k @ self.S_k @ self.V_k.T
 
         self.pc_variance = self.S_k.sum(axis=0)
-        total_variance = self.pc_variance.sum()
+        total_variance = self.S.sum()
         self.pc_variance_ratio = self.pc_variance / total_variance
 
     def transform(
@@ -39,13 +39,13 @@ class PCA:
     ):
         if standardize:
             X = (X - X.mean(axis=0)) / X.std(axis=0)
-            
+
         return X @ self.V_k
 
 def svd(
         mat: np.ndarray,
         standardize: bool=False,
-        strict: bool=False
+        strict: bool=True
     )-> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Calculates SVD of a matrix.
@@ -89,7 +89,7 @@ def svd(
     U = mat @ V @ S_inv
 
     if strict and not np.allclose(U @ S @ V.T, mat):
-        raise RuntimeError("Equality assertion against initial matrix failed.")
+        raise RuntimeError("Equality assertion against initial matrix failed. Check for collinearity in input data.")
 
     return U, S, V
 
@@ -97,11 +97,15 @@ def scatter_2d_with_loadings(
         data_matrix,
         right_singular_vectors,
         singular_values,
+        standardize=True,
         scale_factor=0.1,
         width=600,
         height=400,
         margin=35
         ) -> None:
+    
+    if standardize:
+        data_matrix = (data_matrix - data_matrix.mean(axis=0)) / data_matrix.std(axis=0)
     
     # Get PC loadings from singular values
     loadings = singular_values.sum(axis=0)[:2] * scale_factor
@@ -164,20 +168,22 @@ def generate_data(
     return A
 
 if __name__ == '__main__':
+    # Get some data
     import plotly.express as px
+    data = px.data.iris().drop(columns=['species', 'species_id']).to_numpy()
 
-    df = px.data.iris()
-
-    df['species'] = df['species'].map({
-        'setosa': 0,
-        'versicolor': 1,
-        'virginica': 2,
-        })
-    
-    data = df.to_numpy()
-
+    # Fit PCA
     pca = PCA(n_components=3)
     pca.fit(data)
 
-    print(pca.pc_variance_ratio)
-    print(pca.transform(data))
+    # Get variance ratios
+    print("Explained variance ratios:")
+    [print(f"PC{i}: {pc_var*100:.0f}%", end=' ') for i, pc_var in enumerate(pca.pc_variance_ratio)]
+    print()
+
+    # Get approximated X and transformed X
+    approximated_data = pca.approx_X
+    transformed_data = pca.transform(data)
+
+    # Visualize result
+    scatter_2d_with_loadings(transformed_data, pca.V_k, pca.S)
